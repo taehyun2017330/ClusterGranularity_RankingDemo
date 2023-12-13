@@ -1,0 +1,243 @@
+import React, { useState, useEffect, useRef } from 'react';
+import * as d3 from 'd3';
+
+// Initialize Elo ratings for each scatterplot
+const initialEloRatings = new Array(20).fill(1500).map((rating, index) => ({
+  id: `scatterplot${index + 1}.png`,
+  rating,
+}));
+
+function App() {
+  const [scatterplots, setScatterplots] = useState(initialEloRatings);
+  const [currentMatchup, setCurrentMatchup] = useState([0, 1]);
+  const [rankings, setRankings] = useState([]);
+  const [matchCount, setMatchCount] = useState(0);
+  const [isRankingFinalized, setIsRankingFinalized] = useState(false);
+  const [ratingHistory, setRatingHistory] = useState([]);
+  
+  const scatterplotRefs = useRef(scatterplots.map(() => React.createRef()));
+  const loadScatterplots = async () => {
+    const scatterplotFiles = Array.from({ length: 20 }, (_, i) => `${i + 1}.json`);
+    const loadedScatterplots = await Promise.all(
+      scatterplotFiles.map(async (file) => {
+        const response = await fetch(`/pickedpoints3/${file}`);
+        const rawData = await response.json();
+        const transformedData = transformData(rawData); // Apply transformation here
+        return { data: transformedData, rating: 1500 };
+      })
+    );
+    
+    setScatterplots(loadedScatterplots);
+  };
+  
+
+  const transformData = (rawData) => {
+    return rawData.map(d => ({ x: d[0], y: d[1] }));
+  };
+  
+
+  // Load scatterplot data on component mount
+  useEffect(() => {
+    loadScatterplots();
+  }, []);
+
+  // D3 rendering function
+  const renderScatterplot = (data, ref) => {
+    if (!ref.current) {
+      console.error("Ref is not attached to a DOM element.");
+      return;
+    }
+  
+    if (!Array.isArray(data)) {
+      console.error("Data is not an array:", data);
+      return;
+    }
+  
+    if (data.length === 0) {
+      console.error("Data array is empty.");
+      return;
+    }
+  
+    d3.select(ref.current).selectAll("*").remove();
+    
+
+    // Set dimensions and margins for the graph
+    const margin = { top: 10, right: 30, bottom: 30, left: 40 },
+          width = 460 - margin.left - margin.right,
+          height = 400 - margin.top - margin.bottom;
+
+    // Append SVG object to the body of the page
+    const svg = d3.select(ref.current)
+      .append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+      .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    // Add X axis
+    const x = d3.scaleLinear()
+      .domain([0, d3.max(data, d => d.x)])
+      .range([ 0, width ]);
+    svg.append("g")
+      .attr("transform", `translate(0,${height})`)
+      .call(d3.axisBottom(x));
+
+    // Add Y axis
+    const y = d3.scaleLinear()
+      .domain([0, d3.max(data, d => d.y)])
+      .range([ height, 0]);
+    svg.append("g")
+      .call(d3.axisLeft(y));
+
+    // Add dots
+    svg.append('g')
+      .selectAll("dot")
+      .data(data)
+      .enter()
+      .append("circle")
+        .attr("cx", d => x(d.x))
+        .attr("cy", d => y(d.y))
+        .attr("r", 1.5)
+        .style("fill", "#69b3a2");
+  };
+  
+
+  // Render scatterplots after data is loaded
+  useEffect(() => {
+    scatterplots.forEach((scatterplot, index) => {
+      renderScatterplot(scatterplot.data, scatterplotRefs.current[index]);
+    });
+  }, [scatterplots]);
+  // Function to calculate Elo rating change
+  const calculateEloChange = (winnerRating, loserRating) => {
+    const k = 32; // K-factor
+    const expectedScore = 1 / (1 + Math.pow(10, (loserRating - winnerRating) / 400));
+    return Math.round(k * (1 - expectedScore));
+  };
+
+  // Function to handle user's choice
+  const handleChoice = (winnerIndex, loserIndex) => {
+    const winner = scatterplots[winnerIndex];
+    const loser = scatterplots[loserIndex];
+    const eloChange = calculateEloChange(winner.rating, loser.rating);
+
+    // Update ratings
+    setScatterplots(scatterplots.map((scatterplot, index) => {
+      if (index === winnerIndex) return { ...scatterplot, rating: scatterplot.rating + eloChange };
+      if (index === loserIndex) return { ...scatterplot, rating: scatterplot.rating - eloChange };
+      return scatterplot;
+    }));
+    setMatchCount(matchCount + 1);
+
+    // Record rating history for statistical analysis
+    setRatingHistory([...ratingHistory, scatterplots.map(s => s.rating)]);
+
+    // Choose next matchup
+    const nextMatchup = currentMatchup.map(index => (index + 2) % scatterplots.length);
+    setCurrentMatchup(nextMatchup);
+  };
+  const calculateStandardDeviation = (array) => {
+    const n = array.length;
+    const mean = array.reduce((a, b) => a + b) / n;
+    return Math.sqrt(array.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b) / n);
+  };
+  
+  // Function to check for statistical significance in rating changes
+  const checkStatisticalSignificance = (ratingHistory, matchCount) => {
+    // Define the window size for recent changes
+    const recentWindowSize = 10; // last 10 matches
+    const overallWindowSize = Math.min(matchCount, 50); // last 50 matches or total matches if less than 50
+  
+    // Ensure we have enough data to perform the check
+    if (ratingHistory.length < recentWindowSize || ratingHistory.length < overallWindowSize) {
+      return true;
+    }
+  
+    // Calculate standard deviation for recent and overall rating changes
+    const recentChanges = ratingHistory.slice(-recentWindowSize).flat();
+    const overallChanges = ratingHistory.slice(-overallWindowSize).flat();
+    const recentStdDev = calculateStandardDeviation(recentChanges);
+    const overallStdDev = calculateStandardDeviation(overallChanges);
+  
+    // Define a threshold for what constitutes a significant change
+    const significanceThreshold = 0.5; // Adjust this value based on your requirements
+  
+    // Check if the recent standard deviation is significantly lower than the overall
+    return recentStdDev / overallStdDev > significanceThreshold;
+  };
+
+  // Function to download rankings
+  const downloadRankings = () => {
+    const sortedRankings = scatterplots
+      .slice()
+      .sort((a, b) => b.rating - a.rating)
+      .map(scatterplot => `${scatterplot.id}: ${scatterplot.rating}`);
+    const blob = new Blob([sortedRankings.join('\n')], { type: 'text/plain' });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = 'scatterplot_rankings.txt';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Update rankings when scatterplots state changes
+  useEffect(() => {
+    const sortedRankings = scatterplots
+      .slice()
+      .sort((a, b) => b.rating - a.rating)
+      .map(scatterplot => `${scatterplot.id}: ${scatterplot.rating}`);
+    setRankings(sortedRankings);
+  }, [scatterplots]);
+
+  useEffect(() => {
+    if (matchCount > 60 && !checkStatisticalSignificance(ratingHistory, matchCount)) {
+      setIsRankingFinalized(true);
+    }
+  }, [matchCount, ratingHistory]); // Update dependencies as needed
+  
+  if (isRankingFinalized) {
+    return (
+      <div>
+        <h1>Thank You!</h1>
+        <p>Your ranking for these cluster granularities is:</p>
+        <ol>
+          {rankings.map((ranking, index) => (
+            <li key={index}>{ranking}</li>
+          ))}
+        </ol>
+        <button onClick={downloadRankings}>Download Rankings</button>
+      </div>
+    );
+  }
+
+ return (
+  <div>
+    <h1>Scatterplot Ranking System</h1>
+    <div style={{ display: 'flex', justifyContent: 'center' }}>
+      {currentMatchup.map(index => (
+        <div key={index} style={{ margin: '0 20px' }}>
+          {/* This div is the container for each scatterplot */}
+          <div ref={scatterplotRefs.current[index]} style={{ width: '400px', height: '400px' }}></div>
+          <button onClick={() => handleChoice(currentMatchup[0], currentMatchup[1])}>
+            Vote for Scatterplot {index + 1}
+          </button>
+        </div>
+      ))}
+    </div>
+    <button onClick={downloadRankings}>Download Rankings</button>
+    <div>
+      <h2>Current Rankings:</h2>
+      <ol>
+        {rankings.map((ranking, index) => (
+          <li key={index}>{ranking}</li>
+        ))}
+      </ol>
+    </div>
+  </div>
+);
+
+}
+
+export default App;

@@ -1,38 +1,81 @@
 .App {
   text-align: center;
+  margin-top: 50px;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+button {
+  margin-top: 20px;
+  padding: 10px 20px;
+  font-size: 16px;
+}
+.controls label {
+  display: block;
+  margin-bottom: 10px;
+}
+.slider-controls {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 1000;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
+.slider-row {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  justify-content: space-around;
+  margin-bottom: 10px;
 }
 
-.App-link {
-  color: #61dafb;
+.slider-row label {
+  flex-basis: 45%; /* Adjust width of each label */
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+
+.slider-controls label {
+  display: block;
+  margin-bottom: 10px;
 }
+
+.slider-controls input[type="range"] {
+  width: 100%; /* Slider takes the full width of the container */
+}
+
+
+.controls input[type="range"] {
+  width: 100%;
+}
+
+#scatterplot {
+  
+  width: 400px;
+  
+  height: 400px;
+  
+}
+.lasso path {
+  stroke: rgb(80,80,80);
+  stroke-width:2px;
+}
+
+.lasso .drawn {
+  fill-opacity:.05 ;
+}
+
+.lasso .loop_close {
+  fill:none;
+  stroke-dasharray: 4, 4;
+}
+
+.lasso .origin {
+  fill:#3399FF;
+  fill-opacity:.5;
+}
+.bottom-controls {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%; 
+  text-align: center; 
+  padding: 10px; 
+
+}
+
